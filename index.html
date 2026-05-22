@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kanyinya - Cadastral Parcels</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; }
+    #map { height: 100vh; width: 100%; }
+
+    .leaflet-popup-content-wrapper {
+      border-radius: 8px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.18);
+      padding: 0;
+      overflow: hidden;
+    }
+    .leaflet-popup-content {
+      margin: 0;
+      min-width: 200px;
+    }
+    .popup-header {
+      background: #2c6e49;
+      color: white;
+      padding: 8px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
+    .popup-body { padding: 10px 14px; }
+    .popup-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 5px 0;
+      border-bottom: 1px solid #f0f0f0;
+      font-size: 13px;
+    }
+    .popup-row:last-child { border-bottom: none; }
+    .popup-label {
+      color: #666;
+      font-weight: 500;
+      margin-right: 12px;
+      white-space: nowrap;
+    }
+    .popup-value {
+      color: #222;
+      font-weight: 600;
+      text-align: right;
+    }
+    .popup-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .legend {
+      background: white;
+      padding: 12px 16px;
+      border-radius: 8px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+      font-size: 13px;
+      min-width: 160px;
+    }
+    .legend-title {
+      font-weight: 700;
+      font-size: 13px;
+      margin-bottom: 8px;
+      color: #333;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 5px 0;
+      color: #444;
+    }
+    .legend-swatch {
+      width: 16px;
+      height: 16px;
+      border-radius: 3px;
+      flex-shrink: 0;
+      border: 1px solid rgba(0,0,0,0.15);
+    }
+    .map-title {
+      background: white;
+      padding: 10px 16px;
+      border-radius: 8px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+      font-size: 15px;
+      font-weight: 700;
+      color: #2c6e49;
+      letter-spacing: 0.3px;
+    }
+    .map-subtitle {
+      font-size: 11px;
+      font-weight: 400;
+      color: #888;
+      margin-top: 2px;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+
+    const map = L.map('map', { zoomControl: true }).setView([-1.96, 30.04], 16);
+
+    // OpenStreetMap basemap
+    const osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors',
+    maxZoom: 19
+});
+
+const topo = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', {
+    attribution: 'Tiles &copy; Esri',
+    maxZoom: 20
+});
+
+const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: 'Tiles &copy; Esri',
+    maxZoom: 20
+});
+
+// Set default
+osm.addTo(map);
+
+// Add switcher (top right corner)
+L.control.layers({
+    "OpenStreetMap": osm,
+    "Topographic": topo,
+    "Satellite": satellite
+}, null, { position: 'topright', collapsed: false }).addTo(map);
+
+    function getColor(landuse) {
+      switch((landuse || "").trim()) {
+        case "Agriculture": return "#228B22";
+        case "Commercial":  return "#E63946";
+        case "Residential": return "#E07B39";
+        default:            return "#6c757d";
+      }
+    }
+
+    function getBadgeStyle(landuse) {
+      switch((landuse || "").trim()) {
+        case "Agriculture": return "background:#d4edda; color:#155724;";
+        case "Commercial":  return "background:#f8d7da; color:#721c24;";
+        case "Residential": return "background:#fde3cc; color:#7d3c0a;";
+        default:            return "background:#e2e3e5; color:#383d41;";
+      }
+    }
+
+    fetch('My_kanyinya.geojson')
+      .then(response => {
+        if (!response.ok) throw new Error("File not found: My_kanyinya.geojson");
+        return response.json();
+      })
+      .then(data => {
+        console.log("GeoJSON Loaded. Sample:", data.features[0].properties);
+
+        const parcelsLayer = L.geoJSON(data, {
+          style: function(feature) {
+            const p = feature.properties;
+            const lu = p.Land_Use || p.LandUse || p.LAND_USE || p.landuse || "";
+            return {
+              fillColor: getColor(lu),
+              weight: 1,
+              opacity: 1,
+              color: "white",
+              fillOpacity: 0.7
+            };
+          },
+          onEachFeature: function(feature, layer) {
+            const p = feature.properties;
+
+            const upi = p.UPI || p.upi || p.Upi
+                      || p.Parcel_ID || p.PARCEL_ID
+                      || p.ID || p.FID || p.fid || "N/A";
+
+            const landuse = p.Land_Use || p.LandUse
+                          || p.LAND_USE || p.landuse || "N/A";
+
+            const area = p.Shape_Area || p.SHAPE_Area
+                       || p.shape_area || p.Area || p.AREA || 0;
+
+            const areaFormatted = Number(area).toLocaleString('en-US', {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2
+            });
+
+            layer.bindPopup(`
+              <div class="popup-header">Parcel Info</div>
+              <div class="popup-body">
+                <div class="popup-row">
+                  <span class="popup-label">UPI</span>
+                  <span class="popup-value">${upi}</span>
+                </div>
+                <div class="popup-row">
+                  <span class="popup-label">Land Use</span>
+                  <span class="popup-badge" style="${getBadgeStyle(landuse)}">${landuse}</span>
+                </div>
+                <div class="popup-row">
+                  <span class="popup-label">Shape Area</span>
+                  <span class="popup-value">${areaFormatted} m²</span>
+                </div>
+              </div>
+            `, { maxWidth: 280 });
+
+            layer.on('mouseover', function() {
+              layer.setStyle({ weight: 2.5, color: '#333', fillOpacity: 0.9 });
+            });
+            layer.on('mouseout', function() {
+              parcelsLayer.resetStyle(layer);
+            });
+          }
+        }).addTo(map);
+
+        map.fitBounds(parcelsLayer.getBounds(), { padding: [30, 30] });
+      })
+      .catch(error => {
+        console.error("Error:", error);
+        alert("Could not load My_kanyinya.geojson\n\nMake sure the file is in the same folder and you are using Live Server.");
+      });
+
+    // Title
+    const titleControl = L.control({ position: 'topleft' });
+    titleControl.onAdd = function() {
+      const div = L.DomUtil.create('div', 'map-title');
+      div.innerHTML = `
+        Kanyinya Cadastral Parcels
+        <div class="map-subtitle">Kigali, Rwanda &nbsp;|&nbsp; Land Use Map</div>
+      `;
+      return div;
+    };
+    titleControl.addTo(map);
+
+    // Legend
+    const legend = L.control({ position: 'bottomright' });
+    legend.onAdd = function() {
+      const div = L.DomUtil.create('div', 'legend');
+      div.innerHTML = `
+        <div class="legend-title">Land Use</div>
+        <div class="legend-item">
+          <div class="legend-swatch" style="background:#228B22;"></div>Agriculture
+        </div>
+        <div class="legend-item">
+          <div class="legend-swatch" style="background:#E63946;"></div>Commercial
+        </div>
+        <div class="legend-item">
+          <div class="legend-swatch" style="background:#E07B39;"></div>Residential
+        </div>
+        <div class="legend-item">
+          <div class="legend-swatch" style="background:#6c757d;"></div>Others
+        </div>
+      `;
+      return div;
+    };
+    legend.addTo(map);
+
+  </script>
+</body>
+</html>
